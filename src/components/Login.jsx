@@ -4,6 +4,25 @@ import { auth } from "../firebase";
 import PasswordInput from "./PasswordInput";
 import loginLogo from "../assets/login logo.png";
 
+const getLoginErrorMessage = (code) => {
+  switch (code) {
+    case "auth/invalid-credential":
+    case "auth/user-not-found":
+    case "auth/wrong-password":
+      return "Invalid email id or password.";
+    case "auth/invalid-email":
+      return "Please enter a valid email address.";
+    case "auth/unauthorized-domain":
+      return "This website domain is not allowed in Firebase Authentication.";
+    case "auth/network-request-failed":
+      return "Network error. Please check your connection and try again.";
+    case "auth/too-many-requests":
+      return "Too many login attempts. Please wait and try again.";
+    default:
+      return "Login failed. Please try again.";
+  }
+};
+
 function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -12,13 +31,14 @@ function Login() {
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    const normalizedEmail = email.trim().toLowerCase();
 
     try {
       setLoading(true);
       setError("");
-      await signInWithEmailAndPassword(auth, email, password);
+      await signInWithEmailAndPassword(auth, normalizedEmail, password);
     } catch (err) {
-      setError("Invalid email id/password");
+      setError(getLoginErrorMessage(err.code));
     } finally {
       setLoading(false);
     }
