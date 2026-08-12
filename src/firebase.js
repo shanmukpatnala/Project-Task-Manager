@@ -3,13 +3,23 @@ import { getFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAEVmJ7YspS5FkO1DJS_xq8QPI4l1-Qqoc",
-  authDomain: "project-task-manager-d73a4.firebaseapp.com",
-  projectId: "project-task-manager-d73a4",
-  storageBucket: "project-task-manager-d73a4.firebasestorage.app",
-  messagingSenderId: "544358763092",
-  appId: "1:544358763092:web:d71f4947e8ec229f73bbc1"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
+
+const missingConfigKeys = Object.entries(firebaseConfig)
+  .filter(([, value]) => !value)
+  .map(([key]) => key);
+
+if (missingConfigKeys.length > 0) {
+  throw new Error(
+    `Missing Firebase environment variables: ${missingConfigKeys.join(", ")}`
+  );
+}
 
 const app = initializeApp(firebaseConfig);
 const secondaryApp = initializeApp(firebaseConfig, "Secondary");
