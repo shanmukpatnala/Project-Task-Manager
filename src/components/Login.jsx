@@ -18,8 +18,17 @@ const getLoginErrorMessage = (code) => {
       return "Network error. Please check your connection and try again.";
     case "auth/too-many-requests":
       return "Too many login attempts. Please wait and try again.";
+    case "auth/operation-not-allowed":
+      return "Email/password login is not enabled in Firebase Authentication.";
+    case "auth/api-key-not-valid":
+    case "auth/invalid-api-key":
+      return "Firebase API key is not valid for this deployed website.";
+    case "auth/app-not-authorized":
+      return "This app is not authorized to use Firebase Authentication.";
+    case "auth/user-disabled":
+      return "This user account is disabled in Firebase Authentication.";
     default:
-      return "Login failed. Please try again.";
+      return `Login failed: ${code || "unknown Firebase error"}`;
   }
 };
 
