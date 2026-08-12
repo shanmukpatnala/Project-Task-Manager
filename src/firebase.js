@@ -7,7 +7,7 @@ const readPublicConfig = (value) => globalThis.atob(value);
 const firebaseConfig = {
   apiKey:
     import.meta.env.VITE_FIREBASE_API_KEY ||
-    readPublicConfig("QUl6YVN5QUVWbUo3WXNwUzVGazAxREpTX3hxOFFQSTRsMS1RcW9j"),
+    readPublicConfig("QUl6YVN5QUVWbUo3WXNwUzVGa08xREpTX3hxOFFQSTRsMS1RcW9j"),
   authDomain:
     import.meta.env.VITE_FIREBASE_AUTH_DOMAIN ||
     "project-task-manager-d73a4.firebaseapp.com",
