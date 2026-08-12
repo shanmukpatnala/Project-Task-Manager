@@ -4,7 +4,8 @@ import { auth } from "../firebase";
 function Logout() {
   return (
     <button
-      style={{ margin: "10px", background: "#ef4444" }}
+      className="logout-button"
+      type="button"
       onClick={() => signOut(auth)}
     >
       Logout

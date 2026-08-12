@@ -1,0 +1,108 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isBootstrapAppAdmin() {
+      return signedIn()
+        && request.auth.token.email == "shanmukpatnala13@gmail.com";
+    }
+
+    function userProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAppAdmin() {
+      return isBootstrapAppAdmin()
+        || (signedIn() && userProfile().role == "appAdmin");
+    }
+
+    function isOrgAdmin(orgId) {
+      return signedIn()
+        && userProfile().organizationId == orgId
+        && (userProfile().role == "orgAdmin" || userProfile().role == "admin");
+    }
+
+    function isOrgOwner(orgId) {
+      return signedIn()
+        && get(/databases/$(database)/documents/organizations/$(orgId)).data.adminId == request.auth.uid;
+    }
+
+    function canManageOrg(orgId) {
+      return isOrgAdmin(orgId) || isOrgOwner(orgId);
+    }
+
+    function isOrgUserCreate(orgId) {
+      return signedIn()
+        && orgId is string
+        && (
+          isAppAdmin()
+          || get(/databases/$(database)/documents/organizations/$(orgId)).data.adminId == request.auth.uid
+          || (
+            userProfile().organizationId == orgId
+            && (userProfile().role == "orgAdmin" || userProfile().role == "admin")
+          )
+        );
+    }
+
+    function inOrg(orgId) {
+      return signedIn()
+        && userProfile().organizationId == orgId
+        && get(/databases/$(database)/documents/organizations/$(orgId)).data.disabled != true;
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn()
+        && (request.auth.uid == userId
+          || isAppAdmin()
+          || inOrg(resource.data.organizationId));
+
+      allow create, update: if signedIn()
+        && (
+          request.auth.uid == userId
+          || isAppAdmin()
+          || isOrgUserCreate(request.resource.data.organizationId)
+        );
+
+      allow delete: if signedIn()
+        && (isAppAdmin() || canManageOrg(resource.data.organizationId));
+    }
+
+    match /organizations/{organizationId} {
+      allow read: if signedIn()
+        && (isAppAdmin() || inOrg(organizationId));
+      allow create, delete: if isAppAdmin();
+      allow update: if isAppAdmin() || canManageOrg(organizationId);
+    }
+
+    match /projects/{projectId} {
+      allow read: if isAppAdmin()
+        || inOrg(resource.data.organizationId)
+        || canManageOrg(resource.data.organizationId);
+      allow create: if canManageOrg(request.resource.data.organizationId);
+      allow update, delete: if isAppAdmin() || canManageOrg(resource.data.organizationId);
+    }
+
+    match /tasks/{taskId} {
+      allow read: if isAppAdmin() || inOrg(resource.data.organizationId);
+      allow create: if inOrg(request.resource.data.organizationId);
+      allow update: if isAppAdmin() || inOrg(resource.data.organizationId);
+      allow delete: if isAppAdmin() || canManageOrg(resource.data.organizationId);
+    }
+
+    match /comments/{commentId} {
+      allow read: if signedIn();
+      allow create: if signedIn();
+      allow update, delete: if isAppAdmin();
+    }
+
+    match /workItems/{workItemId} {
+      allow read: if isAppAdmin() || signedIn();
+      allow update: if signedIn();
+      allow create, delete: if isAppAdmin();
+    }
+  }
+}

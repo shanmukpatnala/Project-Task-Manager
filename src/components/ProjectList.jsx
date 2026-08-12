@@ -1,35 +1,88 @@
 import { useEffect, useState } from "react";
-import { collection, deleteDoc, doc, getDocs } from "firebase/firestore";
+import {
+  collection,
+  getDocs,
+  query,
+  where,
+} from "firebase/firestore";
 import { db } from "../firebase";
 
-function ProjectList({ openProject }) {
+function ProjectList({
+  openProject,
+  organizationId,
+  currentUserId,
+  isAdmin,
+  refreshKey,
+  localProject,
+}) {
   const [projects, setProjects] = useState([]);
+  const [status, setStatus] = useState(null);
 
   const fetchProjects = async () => {
-    const snap = await getDocs(collection(db, "projects"));
-    setProjects(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-  };
+    try {
+      const snap = await getDocs(
+        query(
+          collection(db, "projects"),
+          where("organizationId", "==", organizationId)
+        )
+      );
+      const data = snap.docs
+          .map((doc) => ({ id: doc.id, ...doc.data() }))
+          .filter((project) => {
+            const assigned =
+              project.createdBy === currentUserId ||
+              project.assignedUserIds?.includes(currentUserId);
 
-  const deleteProject = async (id) => {
-    await deleteDoc(doc(db, "projects", id));
-    fetchProjects();
+            return isAdmin || assigned;
+          });
+
+      setProjects(
+        localProject
+          ? [localProject, ...data.filter((project) => project.id !== localProject.id)]
+          : data
+      );
+    } catch (err) {
+      setStatus({
+        type: "error",
+        message: err.message || "Projects failed to load.",
+      });
+    }
   };
 
   useEffect(() => {
     fetchProjects();
-  }, []);
+  }, [organizationId, currentUserId, isAdmin, refreshKey, localProject]);
 
   return (
-    <div className="container">
+    <div className="ado-panel project-panel">
       <h2>Projects</h2>
-      {projects.map(p => (
-        <div key={p.id} style={{ marginBottom: 10 }}>
-          <b>{p.projectName}</b>
-          <br />
-          <button onClick={() => openProject(p.id)}>Open</button>
-          <button onClick={() => deleteProject(p.id)}>Delete</button>
+      {status && (
+        <div className={`inline-status ${status.type}`} role="status">
+          <span className="status-mark" aria-hidden="true" />
+          <span>{status.message}</span>
+        </div>
+      )}
+      {projects.length === 0 && <p>No projects found.</p>}
+      <div className="project-grid">
+      {projects.map((p) => (
+        <div className="project-card" key={p.id}>
+          <button type="button" onClick={() => openProject(p)}>
+            {p.projectLogo?.startsWith("http") || p.projectLogo?.startsWith("data:") ? (
+              <img
+                alt=""
+                className="project-logo-img"
+                src={p.projectLogo}
+              />
+            ) : (
+              <span className="project-badge">
+                {p.projectLogo || p.projectName?.[0] || "P"}
+              </span>
+            )}
+            <b>{p.projectName}</b>
+          </button>
         </div>
       ))}
+      </div>
     </div>
   );
 }

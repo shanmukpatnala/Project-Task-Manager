@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { createUserWithEmailAndPassword } from "firebase/auth";
-import { auth } from "../firebase";
+import { doc, serverTimestamp, setDoc } from "firebase/firestore";
+import { auth, db } from "../firebase";
+import { BOOTSTRAP_ADMIN_EMAIL } from "../utils/useUserProfile";
 
 function Signup({ goToLogin }) {
   const [email, setEmail] = useState("");
@@ -17,8 +19,23 @@ function Signup({ goToLogin }) {
 
     try {
       setLoading(true);
-      await createUserWithEmailAndPassword(auth, email, password);
-      alert("Account created successfully ✅");
+      const credential = await createUserWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
+      const isBootstrapAdmin =
+        email.toLowerCase() === BOOTSTRAP_ADMIN_EMAIL;
+
+      await setDoc(doc(db, "users", credential.user.uid), {
+        email,
+        role: isBootstrapAdmin ? "appAdmin" : "staff",
+        organizationId: null,
+        mustChangePassword: false,
+        createdAt: serverTimestamp(),
+      });
+
+      alert("Account created successfully");
     } catch (err) {
       alert(err.message);
     } finally {
