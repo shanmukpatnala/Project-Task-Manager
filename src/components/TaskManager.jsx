@@ -61,6 +61,7 @@ function TaskManager({
   const [form, setForm] = useState(emptyForm);
   const [status, setStatus] = useState(null);
   const [discardAction, setDiscardAction] = useState(null);
+  const [previewImage, setPreviewImage] = useState(null);
 
   const userNameById = useMemo(
     () =>
@@ -428,13 +429,13 @@ function TaskManager({
         {safeImages.map((image, index) => (
           <div className="attachment-tile" key={`${image.name || "image"}-${index}`}>
             <img alt={image.name || "Attachment"} src={image.src} />
-            <a
+            <button
               className="attachment-download"
-              download={image.name || `attachment-${index + 1}.png`}
-              href={image.src}
+              type="button"
+              onClick={() => setPreviewImage(image)}
             >
-              Download
-            </a>
+              View
+            </button>
             <button
               className="attachment-remove"
               type="button"
@@ -449,6 +450,36 @@ function TaskManager({
       )
     );
   };
+
+  const renderImagePreviewDialog = () =>
+    previewImage && (
+      <div
+        className="modal-backdrop"
+        role="presentation"
+        onClick={() => setPreviewImage(null)}
+      >
+        <div
+          aria-label={previewImage.name || "Attachment preview"}
+          aria-modal="true"
+          className="image-preview-dialog"
+          role="dialog"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className="image-preview-bar">
+            <b>{previewImage.name || "Attachment"}</b>
+            <button
+              className="attachment-remove image-preview-close"
+              type="button"
+              aria-label="Close image preview"
+              onClick={() => setPreviewImage(null)}
+            >
+              X
+            </button>
+          </div>
+          <img alt={previewImage.name || "Attachment preview"} src={previewImage.src} />
+        </div>
+      </div>
+    );
 
   const renderResourceSelect = (value, onChange, label, fallbackLabel) => (
     <div className="resource-field">
@@ -657,6 +688,7 @@ function TaskManager({
             ))}
           </section>
         </div>
+        {renderImagePreviewDialog()}
         {renderDiscardDialog()}
       </div>
     );
@@ -791,6 +823,7 @@ function TaskManager({
             )}
           </section>
         </div>
+        {renderImagePreviewDialog()}
         {renderDiscardDialog()}
       </div>
     );
