@@ -11,6 +11,26 @@ service cloud.firestore {
         && request.auth.token.email == "shanmukpatnala13@gmail.com";
     }
 
+    function isBootstrapCodetraxOrgAdmin() {
+      return signedIn()
+        && request.auth.token.email == "admin@codetrax.in";
+    }
+
+    function isCodetraxOrganization(data) {
+      return data.adminEmail == "admin@codetrax.in"
+        && (data.name == "CodeTrax.in" || data.name == "codetrax.in");
+    }
+
+    function isCodetraxOrganizationId(orgId) {
+      return orgId is string
+        && isCodetraxOrganization(get(/databases/$(database)/documents/organizations/$(orgId)).data);
+    }
+
+    function isBootstrapCodetraxOrganizationAdmin(orgId) {
+      return isBootstrapCodetraxOrgAdmin()
+        && isCodetraxOrganizationId(orgId);
+    }
+
     function userProfile() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
@@ -41,6 +61,7 @@ service cloud.firestore {
         && (
           isAppAdmin()
           || get(/databases/$(database)/documents/organizations/$(orgId)).data.adminId == request.auth.uid
+          || isBootstrapCodetraxOrganizationAdmin(orgId)
           || (
             userProfile().organizationId == orgId
             && (userProfile().role == "orgAdmin" || userProfile().role == "admin")
@@ -73,24 +94,43 @@ service cloud.firestore {
 
     match /organizations/{organizationId} {
       allow read: if signedIn()
-        && (isAppAdmin() || inOrg(organizationId));
-      allow create, delete: if isAppAdmin();
-      allow update: if isAppAdmin() || canManageOrg(organizationId);
+        && (isAppAdmin()
+          || inOrg(organizationId)
+          || isBootstrapCodetraxOrgAdmin());
+      allow create: if isAppAdmin()
+        || (isBootstrapCodetraxOrgAdmin()
+          && request.resource.data.adminId == request.auth.uid
+          && isCodetraxOrganization(request.resource.data));
+      allow delete: if isAppAdmin();
+      allow update: if isAppAdmin()
+        || canManageOrg(organizationId)
+        || (isBootstrapCodetraxOrgAdmin()
+          && isCodetraxOrganization(resource.data)
+          && isCodetraxOrganization(request.resource.data));
     }
 
     match /projects/{projectId} {
       allow read: if isAppAdmin()
         || inOrg(resource.data.organizationId)
         || canManageOrg(resource.data.organizationId);
-      allow create: if canManageOrg(request.resource.data.organizationId);
+      allow create: if isOrgUserCreate(request.resource.data.organizationId)
+        || (isBootstrapCodetraxOrgAdmin()
+          && isCodetraxOrganizationId(request.resource.data.organizationId));
       allow update, delete: if isAppAdmin() || canManageOrg(resource.data.organizationId);
     }
 
     match /tasks/{taskId} {
-      allow read: if isAppAdmin() || inOrg(resource.data.organizationId);
-      allow create: if inOrg(request.resource.data.organizationId);
-      allow update: if isAppAdmin() || inOrg(resource.data.organizationId);
-      allow delete: if isAppAdmin() || canManageOrg(resource.data.organizationId);
+      allow read: if isAppAdmin()
+        || inOrg(resource.data.organizationId)
+        || isBootstrapCodetraxOrganizationAdmin(resource.data.organizationId);
+      allow create: if inOrg(request.resource.data.organizationId)
+        || isBootstrapCodetraxOrganizationAdmin(request.resource.data.organizationId);
+      allow update: if isAppAdmin()
+        || inOrg(resource.data.organizationId)
+        || isBootstrapCodetraxOrganizationAdmin(resource.data.organizationId);
+      allow delete: if isAppAdmin()
+        || canManageOrg(resource.data.organizationId)
+        || isBootstrapCodetraxOrganizationAdmin(resource.data.organizationId);
     }
 
     match /comments/{commentId} {

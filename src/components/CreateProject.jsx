@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  collection,
   doc,
   getDoc,
+  getDocs,
+  query,
+  setDoc,
+  where,
 } from "firebase/firestore";
 import { auth, db } from "../firebase";
 
@@ -25,6 +30,9 @@ function CreateProject({ profile, setProfile }) {
   const [activeProjectName, setActiveProjectName] = useState("");
   const [recentProject, setRecentProject] = useState(null);
   const [projectRefresh, setProjectRefresh] = useState(0);
+  const [resolvedOrganizationId, setResolvedOrganizationId] = useState(
+    profile?.organizationId || ""
+  );
 
   const profileName =
     profile?.name ||
@@ -43,6 +51,17 @@ function CreateProject({ profile, setProfile }) {
     [organization?.name, profile?.organizationName]
   );
   const isCodeTraxOrganization = workspaceTitle.toLowerCase() === "codetrax.in";
+  const organizationLogo = organization?.companyLogo || "";
+  const organizationInitials =
+    workspaceTitle
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join("") || "PT";
+  const brandLogo = organizationLogo || (isCodeTraxOrganization ? codetraxLogo : "");
+  const activeOrganizationId =
+    organization?.id || resolvedOrganizationId || profile?.organizationId || "";
 
   const loadOrganization = async () => {
     if (!profile?.organizationId) return;
@@ -50,12 +69,59 @@ function CreateProject({ profile, setProfile }) {
     const snap = await getDoc(doc(db, "organizations", profile.organizationId));
     if (snap.exists()) {
       setOrganization({ id: snap.id, ...snap.data() });
+      setResolvedOrganizationId(snap.id);
     }
   };
 
   useEffect(() => {
+    setResolvedOrganizationId(profile?.organizationId || "");
     loadOrganization();
   }, [profile?.organizationId]);
+
+  useEffect(() => {
+    const resolveCodeTraxOrganization = async () => {
+      if (
+        activeOrganizationId ||
+        profile?.email?.toLowerCase() !== "admin@codetrax.in"
+      ) {
+        return;
+      }
+
+      const snap = await getDocs(
+        query(
+          collection(db, "organizations"),
+          where("adminEmail", "==", "admin@codetrax.in")
+        )
+      );
+      const orgDoc = snap.docs[0];
+      if (!orgDoc) return;
+
+      const nextOrganization = { id: orgDoc.id, ...orgDoc.data() };
+      setOrganization(nextOrganization);
+      setResolvedOrganizationId(orgDoc.id);
+      setProfile?.({
+        ...profile,
+        name: profile?.name || nextOrganization.adminName || "Shanmuka Patnala",
+        organizationId: orgDoc.id,
+        organizationName: nextOrganization.name || "CodeTrax.in",
+      });
+
+      if (auth.currentUser?.uid) {
+        await setDoc(
+          doc(db, "users", auth.currentUser.uid),
+          {
+            name: profile?.name || nextOrganization.adminName || "Shanmuka Patnala",
+            organizationId: orgDoc.id,
+            organizationName: nextOrganization.name || "CodeTrax.in",
+            role: profile?.role || "orgAdmin",
+          },
+          { merge: true }
+        );
+      }
+    };
+
+    resolveCodeTraxOrganization();
+  }, [activeOrganizationId, profile?.email]);
 
   const openProject = (project) => {
     setActiveProject(project.id);
@@ -119,10 +185,10 @@ function CreateProject({ profile, setProfile }) {
     <div className="ado-shell">
       <header className="ado-header">
         <div className="ado-brand">
-          {isCodeTraxOrganization ? (
-            <img className="ado-logo-img" src={codetraxLogo} alt="" />
+          {brandLogo ? (
+            <img className="ado-logo-img" src={brandLogo} alt="" />
           ) : (
-            <span className="ado-logo">PT</span>
+            <span className="ado-logo">{organizationInitials}</span>
           )}
           <b>{workspaceTitle}</b>
         </div>
@@ -143,8 +209,10 @@ function CreateProject({ profile, setProfile }) {
             setActiveProjectName("");
           }}
         >
-          {isCodeTraxOrganization && (
-            <img className="side-logo-img" src={codetraxLogo} alt="" />
+          {brandLogo ? (
+            <img className="side-logo-img" src={brandLogo} alt="" />
+          ) : (
+            <span className="side-logo-placeholder">{organizationInitials}</span>
           )}
           <span>{workspaceTitle}</span>
         </button>
@@ -179,10 +247,10 @@ function CreateProject({ profile, setProfile }) {
               <h1>{workspaceTitle}</h1>
             </div>
 
-            {profile?.organizationId && (
+            {activeOrganizationId && (
               <ProjectList
                 openProject={openProject}
-                organizationId={profile.organizationId}
+                organizationId={activeOrganizationId}
                 currentUserId={profile.id}
                 isAdmin={isOrgAdmin}
                 localProject={recentProject}
@@ -194,10 +262,22 @@ function CreateProject({ profile, setProfile }) {
 
         {!organizationDisabled && workspaceView === "settings" && (
           <ProjectSettings
-            organizationId={profile.organizationId}
+            organizationId={activeOrganizationId}
+            profile={profile}
             canManage={isOrgAdmin}
+            onOrganizationUpdated={(nextOrganization) => {
+              setOrganization(nextOrganization);
+            }}
             onProjectCreated={(project) => {
               setRecentProject(project);
+              setProjectRefresh((current) => current + 1);
+            }}
+            onProjectChanged={(project) => {
+              setRecentProject((currentProject) =>
+                currentProject?.id === project.id
+                  ? { ...currentProject, ...project }
+                  : currentProject
+              );
               setProjectRefresh((current) => current + 1);
             }}
           />
@@ -207,7 +287,7 @@ function CreateProject({ profile, setProfile }) {
           <TaskManager
             projectId={activeProject}
             projectName={activeProjectName}
-            organizationId={profile.organizationId}
+            organizationId={activeOrganizationId}
             canCreateTasks
             onBack={() => {
               setActiveProject(null);

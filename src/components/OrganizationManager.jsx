@@ -19,11 +19,14 @@ import {
   signOut as signOutSecondary,
 } from "firebase/auth";
 import { auth, db, secondaryAuth } from "../firebase";
+import { imageFileToDataUrl, sanitizeImageDataUrl } from "../utils/imageDataUrl";
 import PasswordInput from "./PasswordInput";
 import loginLogo from "../assets/login logo.png";
 
 function OrganizationManager({ activeView, profile, setActiveView }) {
   const [organizationName, setOrganizationName] = useState("");
+  const [organizationLogo, setOrganizationLogo] = useState("");
+  const [organizationLogoName, setOrganizationLogoName] = useState("");
   const [orgAdminName, setOrgAdminName] = useState("");
   const [orgAdminEmail, setOrgAdminEmail] = useState("");
   const [orgAdminPassword, setOrgAdminPassword] = useState("");
@@ -79,6 +82,27 @@ function OrganizationManager({ activeView, profile, setActiveView }) {
   const expectedOrganizationAdminEmail = (name) => {
     const domain = organizationEmailDomain(name);
     return domain === "codetrax.in" ? "admin@codetrax.in" : "";
+  };
+
+  const handleOrganizationLogoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    setCreateStatus(null);
+
+    if (!file) {
+      setOrganizationLogo("");
+      setOrganizationLogoName("");
+      return;
+    }
+
+    try {
+      setOrganizationLogo(await imageFileToDataUrl(file));
+      setOrganizationLogoName(file.name);
+    } catch (err) {
+      setCreateStatus({
+        type: "error",
+        message: `Organization failed. ${err.message}`,
+      });
+    }
   };
 
   const loadOrganizations = async () => {
@@ -199,6 +223,8 @@ function OrganizationManager({ activeView, profile, setActiveView }) {
       try {
         await setDoc(orgRef, {
           name: organizationName.trim(),
+          companyLogo: sanitizeImageDataUrl(organizationLogo),
+          companyLogoName: organizationLogoName,
           adminId: adminCredential.user.uid,
           adminName: orgAdminName.trim(),
           adminEmail: orgAdminEmail.trim(),
@@ -225,6 +251,8 @@ function OrganizationManager({ activeView, profile, setActiveView }) {
 
       await signOutSecondary(secondaryAuth);
       setOrganizationName("");
+      setOrganizationLogo("");
+      setOrganizationLogoName("");
       setOrgAdminName("");
       setOrgAdminEmail("");
       setOrgAdminPassword("");
@@ -403,6 +431,21 @@ function OrganizationManager({ activeView, profile, setActiveView }) {
               value={organizationName}
               onChange={(e) => setOrganizationName(e.target.value)}
             />
+            <label className="logo-upload">
+              <span>Organization logo</span>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleOrganizationLogoUpload}
+              />
+            </label>
+            {organizationLogo && (
+              <img
+                className="logo-preview"
+                src={organizationLogo}
+                alt="Organization logo preview"
+              />
+            )}
             <input
               type="text"
               placeholder="Organization admin name"

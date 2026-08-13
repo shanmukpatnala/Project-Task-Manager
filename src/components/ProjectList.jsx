@@ -36,11 +36,23 @@ function ProjectList({
             return isAdmin || assigned;
           });
 
-      setProjects(
-        localProject
-          ? [localProject, ...data.filter((project) => project.id !== localProject.id)]
-          : data
+      setStatus(null);
+      if (!localProject) {
+        setProjects(data);
+        return;
+      }
+
+      const refreshedLocalProject = data.find(
+        (project) => project.id === localProject.id
       );
+      const mergedLocalProject = refreshedLocalProject
+        ? { ...localProject, ...refreshedLocalProject }
+        : localProject;
+
+      setProjects([
+        mergedLocalProject,
+        ...data.filter((project) => project.id !== localProject.id),
+      ]);
     } catch (err) {
       setStatus({
         type: "error",

@@ -159,6 +159,45 @@ function TaskManager({
     JSON.stringify(getTrackedFormSnapshot(current)) !==
     JSON.stringify(getTrackedFormSnapshot(original));
 
+  const normalizeImages = (images) =>
+    (Array.isArray(images) ? images.flat(Infinity) : [])
+      .map((image) => {
+        if (typeof image === "string") {
+          return { name: "Attachment", src: image };
+        }
+
+        if (!image || typeof image !== "object") return null;
+
+        const src = typeof image.src === "string" ? image.src : "";
+        if (!src) return null;
+
+        return {
+          name: typeof image.name === "string" ? image.name : "Attachment",
+          src,
+        };
+      })
+      .filter(Boolean);
+
+  const normalizeChangeHistory = (entries) =>
+    (Array.isArray(entries) ? entries.flat(Infinity) : [])
+      .map((entry) => {
+        if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+          return null;
+        }
+
+        return {
+          field: typeof entry.field === "string" ? entry.field : "Work item",
+          changedBy: typeof entry.changedBy === "string" ? entry.changedBy : "",
+          changedById:
+            typeof entry.changedById === "string" ? entry.changedById : "",
+          changedAt:
+            typeof entry.changedAt === "string"
+              ? entry.changedAt
+              : new Date().toISOString(),
+        };
+      })
+      .filter(Boolean);
+
   const readImages = (files, callback) => {
     const imageFiles = Array.from(files || []).filter((file) =>
       file.type.startsWith("image/")
@@ -183,7 +222,7 @@ function TaskManager({
     readImages(files, (images) => {
       setForm((current) => ({
         ...current,
-        [field]: [...(current[field] || []), ...images],
+        [field]: normalizeImages([...(current[field] || []), ...images]),
       }));
     });
   };
@@ -192,7 +231,7 @@ function TaskManager({
     readImages(files, (images) => {
       setDetailForm((current) => ({
         ...current,
-        [field]: [...(current[field] || []), ...images],
+        [field]: normalizeImages([...(current[field] || []), ...images]),
       }));
     });
   };
@@ -228,6 +267,8 @@ function TaskManager({
 
     await addDoc(collection(db, "tasks"), {
       ...form,
+      descriptionImages: normalizeImages(form.descriptionImages),
+      discussionImages: normalizeImages(form.discussionImages),
       assignedTo: getResourceForState(form, form.state),
       projectId,
       organizationId,
@@ -261,9 +302,9 @@ function TaskManager({
       ...item,
       devResource: item.devResource || item.assignedTo || "",
       testResource: item.testResource || "",
-      descriptionImages: item.descriptionImages || [],
-      discussionImages: item.discussionImages || [],
-      changeHistory: item.changeHistory || [],
+      descriptionImages: normalizeImages(item.descriptionImages),
+      discussionImages: normalizeImages(item.discussionImages),
+      changeHistory: normalizeChangeHistory(item.changeHistory),
     });
     setShowForm(false);
     setStatus(null);
@@ -304,8 +345,8 @@ function TaskManager({
       ...emptyForm,
       ...selectedItem,
       devResource: selectedItem?.devResource || selectedItem?.assignedTo || "",
-      descriptionImages: selectedItem?.descriptionImages || [],
-      discussionImages: selectedItem?.discussionImages || [],
+      descriptionImages: normalizeImages(selectedItem?.descriptionImages),
+      discussionImages: normalizeImages(selectedItem?.discussionImages),
     }));
   };
 
@@ -313,51 +354,57 @@ function TaskManager({
     if (!selectedItem || !detailForm) return;
     setStatus(null);
 
-    const changeHistory = [...(selectedItem.changeHistory || [])];
-    const changedAt = new Date().toISOString();
+    try {
+      const changeHistory = normalizeChangeHistory(selectedItem.changeHistory);
+      const changedAt = new Date().toISOString();
 
-    if (detailForm.description !== (selectedItem.description || "")) {
-      changeHistory.push({
-        field: "Description",
-        changedBy: currentUserLabel,
-        changedById: auth.currentUser?.uid || "",
-        changedAt,
+      if (detailForm.description !== (selectedItem.description || "")) {
+        changeHistory.push({
+          field: "Description",
+          changedBy: currentUserLabel,
+          changedById: auth.currentUser?.uid || "",
+          changedAt,
+        });
+      }
+
+      if (detailForm.discussion !== (selectedItem.discussion || "")) {
+        changeHistory.push({
+          field: "Discussion",
+          changedBy: currentUserLabel,
+          changedById: auth.currentUser?.uid || "",
+          changedAt,
+        });
+      }
+
+      const payload = {
+        assignedTo: getResourceForState(detailForm, detailForm.state),
+        devResource: detailForm.devResource || detailForm.assignedTo || "",
+        testResource: detailForm.testResource || "",
+        state: detailForm.state || "To do",
+        description: detailForm.description || "",
+        discussion: detailForm.discussion || "",
+        priority: detailForm.priority || "",
+        plannedReleaseDate: detailForm.plannedReleaseDate || "",
+        severity: detailForm.severity || "",
+        reproSteps: detailForm.reproSteps || "",
+        systemInfo: detailForm.systemInfo || "",
+        descriptionImages: normalizeImages(detailForm.descriptionImages),
+        discussionImages: normalizeImages(detailForm.discussionImages),
+        changeHistory: normalizeChangeHistory(changeHistory),
+        updatedAt: changedAt,
+      };
+
+      await updateDoc(doc(db, "tasks", selectedItem.id), payload);
+      await fetchTasks();
+      setSelectedItem(null);
+      setDetailForm(null);
+      setStatus({ type: "success", message: "Work item saved." });
+    } catch (err) {
+      setStatus({
+        type: "error",
+        message: err.message || "Work item save failed.",
       });
     }
-
-    if (detailForm.discussion !== (selectedItem.discussion || "")) {
-      changeHistory.push({
-        field: "Discussion",
-        changedBy: currentUserLabel,
-        changedById: auth.currentUser?.uid || "",
-        changedAt,
-      });
-    }
-
-    const payload = {
-      assignedTo: getResourceForState(detailForm, detailForm.state),
-      devResource: detailForm.devResource || detailForm.assignedTo || "",
-      testResource: detailForm.testResource || "",
-      state: detailForm.state || "To do",
-      description: detailForm.description || "",
-      discussion: detailForm.discussion || "",
-      priority: detailForm.priority || "",
-      plannedReleaseDate: detailForm.plannedReleaseDate || "",
-      severity: detailForm.severity || "",
-      reproSteps: detailForm.reproSteps || "",
-      systemInfo: detailForm.systemInfo || "",
-      descriptionImages: detailForm.descriptionImages || [],
-      discussionImages: detailForm.discussionImages || [],
-      changeHistory,
-      updatedAt: changedAt,
-    };
-
-    await updateDoc(doc(db, "tasks", selectedItem.id), payload);
-    const updatedItem = { ...selectedItem, ...payload };
-    await fetchTasks();
-    setSelectedItem(null);
-    setDetailForm(null);
-    setStatus({ type: "success", message: "Work item saved." });
   };
 
   useEffect(() => {
@@ -372,12 +419,22 @@ function TaskManager({
       </div>
     );
 
-  const renderImageList = (images, onRemove) =>
-    images?.length > 0 && (
+  const renderImageList = (images, onRemove) => {
+    const safeImages = normalizeImages(images);
+
+    return (
+      safeImages.length > 0 && (
       <div className="attachment-grid">
-        {images.map((image, index) => (
+        {safeImages.map((image, index) => (
           <div className="attachment-tile" key={`${image.name || "image"}-${index}`}>
             <img alt={image.name || "Attachment"} src={image.src} />
+            <a
+              className="attachment-download"
+              download={image.name || `attachment-${index + 1}.png`}
+              href={image.src}
+            >
+              Download
+            </a>
             <button
               className="attachment-remove"
               type="button"
@@ -389,7 +446,9 @@ function TaskManager({
           </div>
         ))}
       </div>
+      )
     );
+  };
 
   const renderResourceSelect = (value, onChange, label, fallbackLabel) => (
     <div className="resource-field">

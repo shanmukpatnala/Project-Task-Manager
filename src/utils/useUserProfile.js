@@ -12,13 +12,14 @@ import {
 import { db } from "../firebase";
 
 export const BOOTSTRAP_ADMIN_EMAIL = "shanmukpatnala13@gmail.com";
-export const CODETRAX_ORG_NAME = "codetrax.in";
+export const CODETRAX_ORG_NAME = "CodeTrax.in";
 export const CODETRAX_ORG_ADMIN_EMAIL = "admin@codetrax.in";
+export const CODETRAX_ADMIN_NAME = "Shanmuka Patnala";
 
 const getOrCreateCodetraxOrganization = async (user) => {
   const orgQuery = query(
     collection(db, "organizations"),
-    where("name", "==", CODETRAX_ORG_NAME)
+    where("adminEmail", "==", CODETRAX_ORG_ADMIN_EMAIL)
   );
   const orgSnap = await getDocs(orgQuery);
 
@@ -27,8 +28,10 @@ const getOrCreateCodetraxOrganization = async (user) => {
     await setDoc(
       doc(db, "organizations", existingOrg.id),
       {
+        name: CODETRAX_ORG_NAME,
+        nameKey: CODETRAX_ORG_NAME.toLowerCase(),
         adminId: user.uid,
-        adminName: "Codetrax Admin",
+        adminName: CODETRAX_ADMIN_NAME,
         adminEmail: CODETRAX_ORG_ADMIN_EMAIL,
         disabled: false,
         updatedAt: serverTimestamp(),
@@ -41,8 +44,9 @@ const getOrCreateCodetraxOrganization = async (user) => {
   const orgRef = doc(collection(db, "organizations"));
   await setDoc(orgRef, {
     name: CODETRAX_ORG_NAME,
+    nameKey: CODETRAX_ORG_NAME.toLowerCase(),
     adminId: user.uid,
-    adminName: "Codetrax Admin",
+    adminName: CODETRAX_ADMIN_NAME,
     adminEmail: CODETRAX_ORG_ADMIN_EMAIL,
     disabled: false,
     createdBy: user.uid,
@@ -66,8 +70,9 @@ const getBootstrapProfile = async (user) => {
   if (email === CODETRAX_ORG_ADMIN_EMAIL) {
     const organizationId = await getOrCreateCodetraxOrganization(user);
     return {
-      name: "Codetrax Admin",
+      name: CODETRAX_ADMIN_NAME,
       email: user.email,
+      organizationName: CODETRAX_ORG_NAME,
       role: "orgAdmin",
       organizationId,
       mustChangePassword: false,
@@ -108,7 +113,14 @@ export default function useUserProfile(user) {
 
           const bootstrapProfile = await getBootstrapProfile(user);
 
-          if (bootstrapProfile && data.role !== bootstrapProfile.role) {
+          const shouldRefreshBootstrapProfile =
+            bootstrapProfile &&
+            (data.role !== bootstrapProfile.role ||
+              data.name !== bootstrapProfile.name ||
+              data.organizationId !== bootstrapProfile.organizationId ||
+              data.organizationName !== bootstrapProfile.organizationName);
+
+          if (shouldRefreshBootstrapProfile) {
             await setDoc(
               userRef,
               bootstrapProfile,
@@ -148,10 +160,11 @@ export default function useUserProfile(user) {
         } else if (user.email?.toLowerCase() === CODETRAX_ORG_ADMIN_EMAIL) {
           setProfile({
             id: user.uid,
-            name: "Codetrax Admin",
+            name: CODETRAX_ADMIN_NAME,
             email: user.email,
             role: "orgAdmin",
             organizationId: null,
+            organizationName: CODETRAX_ORG_NAME,
             mustChangePassword: false,
           });
         } else {
