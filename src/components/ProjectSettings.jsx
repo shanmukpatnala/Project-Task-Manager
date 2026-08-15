@@ -61,6 +61,7 @@ function ProjectSettings({
   const [selectedUserId, setSelectedUserId] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [editingProjectId, setEditingProjectId] = useState("");
+  const [viewingWorkItemsProjectId, setViewingWorkItemsProjectId] = useState("");
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState(null);
 
@@ -75,6 +76,16 @@ function ProjectSettings({
   const displayOrganizationAdmin =
     organization?.adminName || profile?.name || organization?.adminEmail || "Organization admin";
   const effectiveOrganizationId = organization?.id || resolvedOrganizationId || organizationId;
+  const assignableUsers = users.filter(
+    (user) => user.role !== "orgAdmin" && user.role !== "admin" && user.role !== "appAdmin"
+  );
+  const editingProject = projects.find((project) => project.id === editingProjectId);
+  const viewingWorkItemsProject = projects.find(
+    (project) => project.id === viewingWorkItemsProjectId
+  );
+  const viewedProjectWorkItems = workItems.filter(
+    (item) => item.projectId === viewingWorkItemsProjectId
+  );
   const roleLabel = (role) => {
     if (role === "orgAdmin" || role === "admin") return "Admin";
     if (role === "appAdmin") return "App Admin";
@@ -508,10 +519,17 @@ function ProjectSettings({
 
   const selectProjectForEdit = (project) => {
     setEditingProjectId(project.id);
+    setViewingWorkItemsProjectId("");
     setEditProjectLogo(sanitizeImageDataUrl(project.projectLogo));
     setEditProjectLogoName(project.projectLogoName || "");
     setEditProjectName(project.projectName || "");
     setEditProjectEndDate(project.endDate || "");
+    clearStatus();
+  };
+
+  const selectProjectWorkItems = (project) => {
+    setViewingWorkItemsProjectId(project.id);
+    setEditingProjectId("");
     clearStatus();
   };
 
@@ -843,7 +861,7 @@ function ProjectSettings({
             }}
           >
             <option value="">Select user</option>
-            {users.map((user) => (
+            {assignableUsers.map((user) => (
               <option key={user.id} value={user.id}>
                 {user.name || user.email}
               </option>
@@ -869,7 +887,8 @@ function ProjectSettings({
       )}
 
       {activePanel === "manageProject" && (
-        <div className="settings-page two-column">
+        <div className="settings-page">
+          {!editingProjectId && !viewingWorkItemsProjectId && (
           <div className="ado-panel settings-panel">
             <h2>Projects</h2>
             {renderStatus()}
@@ -898,6 +917,14 @@ function ProjectSettings({
                     className="secondary-button"
                     type="button"
                     disabled={loading}
+                    onClick={() => selectProjectWorkItems(project)}
+                  >
+                    View
+                  </button>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    disabled={loading}
                     onClick={() => selectProjectForEdit(project)}
                   >
                     Edit
@@ -922,11 +949,25 @@ function ProjectSettings({
               </div>
             ))}
           </div>
+          )}
 
-          <div className="ado-panel settings-panel">
-            <h2>Project Settings</h2>
-            {!editingProjectId && <p>Select a project to edit its name, logo, and finish date.</p>}
-            {editingProjectId && (
+          {editingProjectId && (
+          <div className="ado-panel settings-panel narrow-panel">
+            <div className="panel-title-row">
+              <h2>Project Settings</h2>
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => {
+                  setEditingProjectId("");
+                  clearStatus();
+                }}
+              >
+                Back
+              </button>
+            </div>
+            {editingProject && <p>{editingProject.projectName}</p>}
+            {renderStatus()}
               <form onSubmit={saveProjectDetails} noValidate>
                 <label className="logo-upload">
                   <span>Project logo</span>
@@ -959,19 +1000,33 @@ function ProjectSettings({
                   {loading ? "Saving..." : "Save Project Settings"}
                 </button>
               </form>
-            )}
           </div>
+          )}
 
+          {viewingWorkItemsProjectId && (
           <div className="ado-panel settings-panel">
-            <h2>Work Items</h2>
-            {workItems.length === 0 && <p>No work items found.</p>}
-            {workItems.map((item, index) => {
-              const project = projects.find((p) => p.id === item.projectId);
+            <div className="panel-title-row">
+              <h2>Work Items</h2>
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => {
+                  setViewingWorkItemsProjectId("");
+                  clearStatus();
+                }}
+              >
+                Back
+              </button>
+            </div>
+            {viewingWorkItemsProject && <p>{viewingWorkItemsProject.projectName}</p>}
+            {renderStatus()}
+            {viewedProjectWorkItems.length === 0 && <p>No work items found.</p>}
+            {viewedProjectWorkItems.map((item, index) => {
               return (
                 <div className="settings-row" key={item.id}>
                   <div>
                     <b>#{item.number || index + 1} {item.title}</b>
-                    <span>{project?.projectName || "Project"}</span>
+                    <span>{viewingWorkItemsProject?.projectName || "Project"}</span>
                   </div>
                   <button
                     className="danger-button"
@@ -985,6 +1040,7 @@ function ProjectSettings({
               );
             })}
           </div>
+          )}
         </div>
       )}
     </div>

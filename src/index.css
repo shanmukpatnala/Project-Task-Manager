@@ -958,6 +958,13 @@ button:disabled {
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 }
 
+.panel-title-row {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
 .settings-stack {
   display: flex;
   flex-direction: column;

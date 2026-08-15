@@ -3,6 +3,7 @@ import {
   addDoc,
   collection,
   doc,
+  getDoc,
   getDocs,
   query,
   updateDoc,
@@ -128,10 +129,18 @@ function TaskManager({
   };
 
   const fetchUsers = async () => {
-    const snap = await getDocs(
-      query(collection(db, "users"), where("organizationId", "==", organizationId))
-    );
-    setUsers(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    const [userSnap, projectSnap] = await Promise.all([
+      getDocs(
+        query(collection(db, "users"), where("organizationId", "==", organizationId))
+      ),
+      getDoc(doc(db, "projects", projectId)),
+    ]);
+    const assignedUserIds = new Set(projectSnap.data()?.assignedUserIds || []);
+    const assignedUsers = userSnap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .filter((user) => assignedUserIds.has(user.id));
+
+    setUsers(assignedUsers);
   };
 
   const refreshData = async () => {
