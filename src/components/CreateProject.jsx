@@ -28,6 +28,15 @@ function CreateProject({ profile, setProfile }) {
   const [organization, setOrganization] = useState(null);
   const [activeProject, setActiveProject] = useState(null);
   const [activeProjectName, setActiveProjectName] = useState("");
+  const [activeProjectData, setActiveProjectData] = useState(null);
+  const [activeProjectSection, setActiveProjectSection] = useState("");
+  const [projectTaskCounts, setProjectTaskCounts] = useState({
+    total: 0,
+    open: 0,
+    todo: 0,
+    doing: 0,
+    resolved: 0,
+  });
   const [recentProject, setRecentProject] = useState(null);
   const [projectRefresh, setProjectRefresh] = useState(0);
   const [resolvedOrganizationId, setResolvedOrganizationId] = useState(
@@ -62,6 +71,9 @@ function CreateProject({ profile, setProfile }) {
   const brandLogo = organizationLogo || (isCodeTraxOrganization ? codetraxLogo : "");
   const activeOrganizationId =
     organization?.id || resolvedOrganizationId || profile?.organizationId || "";
+  const activeProjectLogo = activeProjectData?.projectLogo || "";
+  const activeProjectInitial =
+    activeProjectName?.slice(0, 1).toUpperCase() || "P";
 
   const loadOrganization = async () => {
     if (!profile?.organizationId) return;
@@ -123,11 +135,61 @@ function CreateProject({ profile, setProfile }) {
     resolveCodeTraxOrganization();
   }, [activeOrganizationId, profile?.email]);
 
+  useEffect(() => {
+    const loadProjectTaskCounts = async () => {
+      if (!activeProject || !activeOrganizationId) {
+        setProjectTaskCounts({
+          total: 0,
+          open: 0,
+          todo: 0,
+          doing: 0,
+          resolved: 0,
+        });
+        return;
+      }
+
+      const snap = await getDocs(
+        query(collection(db, "tasks"), where("organizationId", "==", activeOrganizationId))
+      );
+      const counts = snap.docs
+        .map((task) => task.data())
+        .filter((task) => task.projectId === activeProject)
+        .reduce(
+          (nextCounts, task) => {
+            const state = task.state || "To do";
+
+            nextCounts.total += 1;
+            if (state !== "Done") nextCounts.open += 1;
+            if (state === "To do") nextCounts.todo += 1;
+            if (state === "Doing") nextCounts.doing += 1;
+            if (state === "Resolved") nextCounts.resolved += 1;
+
+            return nextCounts;
+          },
+          { total: 0, open: 0, todo: 0, doing: 0, resolved: 0 }
+        );
+
+      setProjectTaskCounts(counts);
+    };
+
+    loadProjectTaskCounts();
+  }, [activeProject, activeOrganizationId, activeProjectSection]);
+
   const openProject = (project) => {
     setActiveProject(project.id);
     setActiveProjectName(project.projectName);
-    setWorkspaceView("workItems");
+    setActiveProjectData(project);
+    setActiveProjectSection("");
+    setWorkspaceView("project");
   };
+
+  const projectWebsite = activeProjectData?.website?.trim();
+  const projectWebsiteUrl =
+    projectWebsite && /^https?:\/\//i.test(projectWebsite)
+      ? projectWebsite
+      : projectWebsite
+        ? `https://${projectWebsite}`
+        : "";
 
   if (isAppAdmin) {
     return (
@@ -207,6 +269,8 @@ function CreateProject({ profile, setProfile }) {
             setWorkspaceView("projects");
             setActiveProject(null);
             setActiveProjectName("");
+            setActiveProjectData(null);
+            setActiveProjectSection("");
           }}
         >
           {brandLogo ? (
@@ -216,6 +280,47 @@ function CreateProject({ profile, setProfile }) {
           )}
           <span>{workspaceTitle}</span>
         </button>
+        {workspaceView === "project" && activeProject && (
+          <div className="sidebar-project-menu">
+            <button
+              className="sidebar-project-title"
+              type="button"
+              onClick={() => setActiveProjectSection("")}
+            >
+              {activeProjectLogo?.startsWith("http") ||
+              activeProjectLogo?.startsWith("data:") ? (
+                <img className="sidebar-project-logo" src={activeProjectLogo} alt="" />
+              ) : (
+                <span className="sidebar-project-logo placeholder">
+                  {activeProjectLogo || activeProjectInitial}
+                </span>
+              )}
+              <span>{activeProjectName}</span>
+            </button>
+            <button
+              className={
+                activeProjectSection === "workItems"
+                  ? "project-option active"
+                  : "project-option"
+              }
+              type="button"
+              onClick={() => setActiveProjectSection("workItems")}
+            >
+              Work items
+            </button>
+            <button
+              className={
+                activeProjectSection === "website"
+                  ? "project-option active"
+                  : "project-option"
+              }
+              type="button"
+              onClick={() => setActiveProjectSection("website")}
+            >
+              Website
+            </button>
+          </div>
+        )}
         <button
           className={
             workspaceView === "settings"
@@ -227,6 +332,8 @@ function CreateProject({ profile, setProfile }) {
             setWorkspaceView("settings");
             setActiveProject(null);
             setActiveProjectName("");
+            setActiveProjectData(null);
+            setActiveProjectSection("");
           }}
         >
           Organization settings
@@ -283,23 +390,74 @@ function CreateProject({ profile, setProfile }) {
           />
         )}
 
-        {!organizationDisabled && workspaceView === "workItems" && activeProject && (
-          <TaskManager
-            projectId={activeProject}
-            projectName={activeProjectName}
-            organizationId={activeOrganizationId}
-            canCreateTasks
-            onBack={() => {
-              setActiveProject(null);
-              setActiveProjectName("");
-              setWorkspaceView("projects");
-            }}
-          />
+        {!organizationDisabled && workspaceView === "project" && activeProject && (
+          <div className="project-workspace">
+            <div className="project-content-header">
+              <button
+                className="project-title-link"
+                type="button"
+                onClick={() => setActiveProjectSection("")}
+              >
+                {activeProjectLogo?.startsWith("http") ||
+                activeProjectLogo?.startsWith("data:") ? (
+                  <img className="project-title-logo" src={activeProjectLogo} alt="" />
+                ) : (
+                  <span className="project-title-logo placeholder">
+                    {activeProjectLogo || activeProjectInitial}
+                  </span>
+                )}
+                <span>{activeProjectName}</span>
+              </button>
+            </div>
+
+            {!activeProjectSection && (
+              <div className="project-option-empty">
+                <button
+                  className="project-total-tasks"
+                  type="button"
+                  onClick={() => setActiveProjectSection("workItems")}
+                >
+                  <strong>
+                    {projectTaskCounts.open} of {projectTaskCounts.total}
+                  </strong>
+                  <span>Total tasks</span>
+                  <small>
+                    To do {projectTaskCounts.todo} | Doing {projectTaskCounts.doing} | Resolved{" "}
+                    {projectTaskCounts.resolved}
+                  </small>
+                </button>
+              </div>
+            )}
+
+            {activeProjectSection === "workItems" && (
+              <TaskManager
+                projectId={activeProject}
+                projectName={activeProjectName}
+                organizationId={activeOrganizationId}
+                canCreateTasks
+                embedded
+                onBack={() => setActiveProjectSection("")}
+              />
+            )}
+
+            {activeProjectSection === "website" && (
+              <div className="ado-panel project-website-panel">
+                <h2>Website</h2>
+                {projectWebsite ? (
+                  <a href={projectWebsiteUrl} target="_blank" rel="noreferrer">
+                    {projectWebsite}
+                  </a>
+                ) : (
+                  <p>No website link added for this project.</p>
+                )}
+              </div>
+            )}
+          </div>
         )}
 
-        {!organizationDisabled && workspaceView === "workItems" && !activeProject && (
+        {!organizationDisabled && workspaceView === "project" && !activeProject && (
           <div className="work-items-page">
-            <div className="empty-work">Select a project to view work items</div>
+            <div className="empty-work">Select a project to view options</div>
           </div>
         )}
       </main>

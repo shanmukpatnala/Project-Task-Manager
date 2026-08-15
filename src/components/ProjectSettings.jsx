@@ -49,17 +49,19 @@ function ProjectSettings({
   const [projectLogoName, setProjectLogoName] = useState("");
   const [projectName, setProjectName] = useState("");
   const [projectDescription, setProjectDescription] = useState("");
+  const [projectWebsite, setProjectWebsite] = useState("");
   const [projectStartDate, setProjectStartDate] = useState(todayDateInputValue);
   const [projectEndDate, setProjectEndDate] = useState("");
   const [editProjectLogo, setEditProjectLogo] = useState("");
   const [editProjectLogoName, setEditProjectLogoName] = useState("");
   const [editProjectName, setEditProjectName] = useState("");
+  const [editProjectWebsite, setEditProjectWebsite] = useState("");
   const [editProjectEndDate, setEditProjectEndDate] = useState("");
   const [name, setName] = useState("");
   const [emailName, setEmailName] = useState("");
   const [password, setPassword] = useState("");
-  const [selectedUserId, setSelectedUserId] = useState("");
-  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [selectedUsersProjectId, setSelectedUsersProjectId] = useState("");
+  const [draggedProjectUserId, setDraggedProjectUserId] = useState("");
   const [editingProjectId, setEditingProjectId] = useState("");
   const [viewingWorkItemsProjectId, setViewingWorkItemsProjectId] = useState("");
   const [loading, setLoading] = useState(false);
@@ -91,6 +93,20 @@ function ProjectSettings({
     if (role === "appAdmin") return "App Admin";
     return "User";
   };
+  const assignedUsersForProject = (project) =>
+    users.filter((user) => (project.assignedUserIds || []).includes(user.id));
+  const selectedUsersProject = projects.find(
+    (project) => project.id === selectedUsersProjectId
+  );
+  const selectedProjectAssignedUserIds = new Set(
+    selectedUsersProject?.assignedUserIds || []
+  );
+  const selectedProjectAssignedUsers = selectedUsersProject
+    ? assignedUsersForProject(selectedUsersProject)
+    : [];
+  const selectedProjectUnassignedUsers = selectedUsersProject
+    ? assignableUsers.filter((user) => !selectedProjectAssignedUserIds.has(user.id))
+    : [];
 
   const emailLocalName = useMemo(
     () => emailName.trim().toLowerCase().split("@")[0],
@@ -115,6 +131,7 @@ function ProjectSettings({
     setProjectLogoName("");
     setProjectName("");
     setProjectDescription("");
+    setProjectWebsite("");
     setProjectStartDate(todayDateInputValue());
     setProjectEndDate("");
   };
@@ -433,8 +450,8 @@ function ProjectSettings({
     e.preventDefault();
     clearStatus();
 
-    if (!projectName.trim() || !projectStartDate || !projectEndDate) {
-      showStatus("error", "Project failed. Please fill project name, start date, and end date.");
+    if (!projectName.trim() || !projectStartDate) {
+      showStatus("error", "Project failed. Please fill project name and created date.");
       return;
     }
 
@@ -447,13 +464,15 @@ function ProjectSettings({
 
     try {
       setLoading(true);
+      const sanitizedProjectLogo = sanitizeImageDataUrl(projectLogo);
       const projectData = {
-        projectLogo: sanitizeImageDataUrl(projectLogo),
-        projectLogoName,
+        projectLogo: sanitizedProjectLogo || null,
+        projectLogoName: sanitizedProjectLogo ? projectLogoName || null : null,
         projectName: projectName.trim(),
-        description: projectDescription.trim(),
+        description: projectDescription.trim() || null,
+        website: projectWebsite.trim() || null,
         startDate: projectStartDate,
-        endDate: projectEndDate,
+        endDate: projectEndDate || null,
         status: "Active",
         organizationId: currentOrganizationId,
         assignedUserIds: [],
@@ -523,6 +542,7 @@ function ProjectSettings({
     setEditProjectLogo(sanitizeImageDataUrl(project.projectLogo));
     setEditProjectLogoName(project.projectLogoName || "");
     setEditProjectName(project.projectName || "");
+    setEditProjectWebsite(project.website || "");
     setEditProjectEndDate(project.endDate || "");
     clearStatus();
   };
@@ -542,8 +562,8 @@ function ProjectSettings({
       return;
     }
 
-    if (!editProjectName.trim() || !editProjectEndDate) {
-      showStatus("error", "Project update failed. Please fill project name and finish date.");
+    if (!editProjectName.trim()) {
+      showStatus("error", "Project update failed. Please fill project name.");
       return;
     }
 
@@ -553,7 +573,8 @@ function ProjectSettings({
         projectLogo: sanitizeImageDataUrl(editProjectLogo),
         projectLogoName: editProjectLogoName,
         projectName: editProjectName.trim(),
-        endDate: editProjectEndDate,
+        website: editProjectWebsite.trim() || null,
+        endDate: editProjectEndDate || null,
         updatedAt: serverTimestamp(),
       });
       await loadSettings();
@@ -600,27 +621,36 @@ function ProjectSettings({
     }
   };
 
-  const saveAssignment = async () => {
+  const updateProjectUserAssignment = async (userId, shouldAssign) => {
     clearStatus();
 
-    if (!selectedUserId) {
-      showStatus("error", "Assignment failed. Please select a user first.");
+    if (!selectedUsersProjectId) {
+      showStatus("error", "Please select a project first.");
       return;
     }
 
-    if (!selectedProjectId) {
-      showStatus("error", "Assignment failed. Please select a project.");
+    if (!userId) {
       return;
     }
 
-    const project = projects.find((item) => item.id === selectedProjectId);
+    const project = projects.find((item) => item.id === selectedUsersProjectId);
     const assignedUserIds = new Set(project?.assignedUserIds || []);
-    assignedUserIds.add(selectedUserId);
+
+    if (shouldAssign && assignedUserIds.has(userId)) {
+      showStatus("error", "This user is already assigned to this project.");
+      return;
+    }
+
+    if (shouldAssign) {
+      assignedUserIds.add(userId);
+    } else {
+      assignedUserIds.delete(userId);
+    }
 
     try {
       setLoading(true);
       const nextAssignedUserIds = Array.from(assignedUserIds);
-      await updateDoc(doc(db, "projects", selectedProjectId), {
+      await updateDoc(doc(db, "projects", selectedUsersProjectId), {
         assignedUserIds: nextAssignedUserIds,
         updatedAt: serverTimestamp(),
       });
@@ -630,19 +660,26 @@ function ProjectSettings({
       };
       setProjects((currentProjects) =>
         currentProjects.map((item) =>
-          item.id === selectedProjectId ? updatedProject : item
+          item.id === selectedUsersProjectId ? updatedProject : item
         )
       );
-      setSelectedUserId("");
-      setSelectedProjectId("");
       await loadSettings();
       onProjectChanged?.(updatedProject);
-      showStatus("success", "User assigned to project.");
+      showStatus(
+        "success",
+        shouldAssign ? "User assigned to project." : "User unassigned from project."
+      );
     } catch (err) {
-      showStatus("error", err.message || "Assignment failed.");
+      showStatus("error", err.message || "Project user update failed.");
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleProjectUserDrop = (shouldAssign) => {
+    if (!draggedProjectUserId) return;
+    updateProjectUserAssignment(draggedProjectUserId, shouldAssign);
+    setDraggedProjectUserId("");
   };
 
   const renderStatus = () =>
@@ -700,13 +737,13 @@ function ProjectSettings({
         </button>
         <button
           type="button"
-          className={activePanel === "assignUser" ? "active" : ""}
+          className={activePanel === "projectUsers" ? "active" : ""}
           onClick={() => {
-            setActivePanel("assignUser");
+            setActivePanel("projectUsers");
             clearStatus();
           }}
         >
-          Assign User To Project
+          Project Users
         </button>
         <button
           type="button"
@@ -772,6 +809,12 @@ function ProjectSettings({
               placeholder="Description"
               value={projectDescription}
               onChange={(e) => setProjectDescription(e.target.value)}
+            />
+            <input
+              placeholder="Website link"
+              type="url"
+              value={projectWebsite}
+              onChange={(e) => setProjectWebsite(e.target.value)}
             />
             <label className="date-field">
               <span>Project created date</span>
@@ -850,39 +893,122 @@ function ProjectSettings({
         </div>
       )}
 
-      {activePanel === "assignUser" && (
-        <div className="ado-panel settings-panel narrow-panel">
-          <h2>Assign User To Project</h2>
-          <select
-            value={selectedUserId}
-            onChange={(e) => {
-              setSelectedUserId(e.target.value);
-              setSelectedProjectId("");
-            }}
-          >
-            <option value="">Select user</option>
-            {assignableUsers.map((user) => (
-              <option key={user.id} value={user.id}>
-                {user.name || user.email}
-              </option>
-            ))}
-          </select>
-          <select
-            value={selectedProjectId}
-            disabled={!selectedUserId}
-            onChange={(e) => setSelectedProjectId(e.target.value)}
-          >
-            <option value="">Select project</option>
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.projectName}
-              </option>
-            ))}
-          </select>
+      {activePanel === "projectUsers" && (
+        <div className="ado-panel settings-panel">
+          <h2>Project Users</h2>
+          <div className="project-users-controls">
+            <select
+              value={selectedUsersProjectId}
+              onChange={(e) => setSelectedUsersProjectId(e.target.value)}
+            >
+              <option value="">Select project</option>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.projectName}
+                </option>
+              ))}
+            </select>
+          </div>
           {renderStatus()}
-          <button type="button" disabled={loading} onClick={saveAssignment}>
-            {loading ? "Saving..." : "Assign User"}
-          </button>
+
+          {selectedUsersProject && (
+            <div className="project-users-result">
+              <div className="project-users-head">
+                {selectedUsersProject.projectLogo?.startsWith("data:") ||
+                selectedUsersProject.projectLogo?.startsWith("http") ? (
+                  <img className="settings-logo" src={selectedUsersProject.projectLogo} alt="" />
+                ) : (
+                  <span className="settings-logo-placeholder">
+                    {(selectedUsersProject.projectName || "P").slice(0, 1).toUpperCase()}
+                  </span>
+                )}
+                <div>
+                  <b>{selectedUsersProject.projectName}</b>
+                  <span>
+                    {selectedProjectAssignedUsers.length} assigned |{" "}
+                    {selectedProjectUnassignedUsers.length} unassigned
+                  </span>
+                </div>
+              </div>
+
+              <div className="project-user-columns">
+                <section
+                  className="project-user-column"
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={() => handleProjectUserDrop(true)}
+                >
+                  <div className="project-user-column-head">
+                    <b>Assigned Users</b>
+                    <span>{selectedProjectAssignedUsers.length}</span>
+                  </div>
+                  {selectedProjectAssignedUsers.length === 0 && (
+                    <p className="empty-note">No users assigned to this project.</p>
+                  )}
+                  {selectedProjectAssignedUsers.map((user) => (
+                    <div
+                      className="project-user-row"
+                      draggable
+                      key={user.id}
+                      onDragStart={() => setDraggedProjectUserId(user.id)}
+                    >
+                      <span className="user-initials">
+                        {(user.name || user.email || "U").slice(0, 1).toUpperCase()}
+                      </span>
+                      <div>
+                        <b>{user.name || user.email}</b>
+                        <span>{user.email}</span>
+                      </div>
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        disabled={loading}
+                        onClick={() => updateProjectUserAssignment(user.id, false)}
+                      >
+                        Unassign
+                      </button>
+                    </div>
+                  ))}
+                </section>
+
+                <section
+                  className="project-user-column"
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={() => handleProjectUserDrop(false)}
+                >
+                  <div className="project-user-column-head">
+                    <b>Unassigned Users</b>
+                    <span>{selectedProjectUnassignedUsers.length}</span>
+                  </div>
+                  {selectedProjectUnassignedUsers.length === 0 && (
+                    <p className="empty-note">All users are assigned.</p>
+                  )}
+                  {selectedProjectUnassignedUsers.map((user) => (
+                    <div
+                      className="project-user-row"
+                      draggable
+                      key={user.id}
+                      onDragStart={() => setDraggedProjectUserId(user.id)}
+                    >
+                      <span className="user-initials">
+                        {(user.name || user.email || "U").slice(0, 1).toUpperCase()}
+                      </span>
+                      <div>
+                        <b>{user.name || user.email}</b>
+                        <span>{user.email}</span>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={loading}
+                        onClick={() => updateProjectUserAssignment(user.id, true)}
+                      >
+                        Assign
+                      </button>
+                    </div>
+                  ))}
+                </section>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -894,7 +1020,7 @@ function ProjectSettings({
             {renderStatus()}
             {projects.length === 0 && <p>No projects found.</p>}
             {projects.map((project) => (
-              <div className="settings-row" key={project.id}>
+              <div className="settings-row project-settings-row" key={project.id}>
                 <div className="project-settings-summary">
                   {project.projectLogo?.startsWith("data:") ||
                   project.projectLogo?.startsWith("http") ? (
@@ -906,10 +1032,13 @@ function ProjectSettings({
                   )}
                   <div>
                   <b>{project.projectName}</b>
-                    <span>
-                      {project.endDate ? `Finish: ${project.endDate}` : "No finish date"}
-                    </span>
-                    <span>{project.disabled ? "Disabled" : "Enabled"}</span>
+                    <div className="project-meta-tags">
+                      <span>
+                        {project.endDate ? `Finish: ${project.endDate}` : "No finish date"}
+                      </span>
+                      <span>{project.disabled ? "Disabled" : "Enabled"}</span>
+                      <span>{assignedUsersForProject(project).length} users</span>
+                    </div>
                   </div>
                 </div>
                 <div className="row-actions">
@@ -985,6 +1114,12 @@ function ProjectSettings({
                   value={editProjectName}
                   onChange={(e) => setEditProjectName(e.target.value)}
                 />
+                <input
+                  placeholder="Website link"
+                  type="url"
+                  value={editProjectWebsite}
+                  onChange={(e) => setEditProjectWebsite(e.target.value)}
+                />
                 <label className="date-field">
                   <span>Finish date</span>
                   <input
@@ -997,7 +1132,7 @@ function ProjectSettings({
                   <p className="upload-note">Selected: {editProjectLogoName}</p>
                 )}
                 <button type="submit" disabled={loading}>
-                  {loading ? "Saving..." : "Save Project Settings"}
+                  {loading ? "Saving..." : "Save"}
                 </button>
               </form>
           </div>

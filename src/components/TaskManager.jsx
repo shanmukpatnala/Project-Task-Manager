@@ -52,6 +52,7 @@ function TaskManager({
   organizationId,
   canCreateTasks,
   onBack,
+  embedded = false,
 }) {
   const [taskType, setTaskType] = useState("story");
   const [showForm, setShowForm] = useState(false);
@@ -75,6 +76,26 @@ function TaskManager({
 
   const currentUserLabel =
     auth.currentUser?.displayName || auth.currentUser?.email || "Unknown user";
+
+  const taskCounts = useMemo(
+    () =>
+      tasks.reduce(
+        (counts, task) => {
+          const state = task.state || "To do";
+
+          counts.total += 1;
+          if (state !== "Done") counts.open += 1;
+          if (state === "To do") counts.todo += 1;
+          if (state === "Doing") counts.doing += 1;
+          if (state === "Resolved") counts.resolved += 1;
+          if (state === "Done") counts.done += 1;
+
+          return counts;
+        },
+        { total: 0, open: 0, todo: 0, doing: 0, resolved: 0, done: 0 }
+      ),
+    [tasks]
+  );
 
   const getUserName = (userId) => userNameById[userId] || "";
 
@@ -840,28 +861,46 @@ function TaskManager({
 
   return (
     <div className="work-items-page">
-      <div className="work-header">
-        <button
-          className="back-button"
-          type="button"
-          aria-label="Back to Projects"
-          title="Back to Projects"
-          onClick={onBack}
-        >
-          <span className="back-icon" aria-hidden="true">&lt;</span>
-          <span>Back</span>
-        </button>
-        <h1>{projectName}</h1>
-      </div>
+      {!embedded && (
+        <div className="work-header">
+          <button
+            className="back-button"
+            type="button"
+            aria-label="Back to Projects"
+            title="Back to Projects"
+            onClick={onBack}
+          >
+            <span className="back-icon" aria-hidden="true">&lt;</span>
+            <span>Back</span>
+          </button>
+          <h1>{projectName}</h1>
+        </div>
+      )}
       <div className="work-toolbar">
-        <h2>Work items</h2>
-        <select value={taskType} onChange={(e) => setTaskType(e.target.value)}>
-          <option value="story">Story</option>
-          <option value="bug">Bug</option>
-        </select>
-        <button type="button" onClick={() => setShowForm(true)}>
-          New Work Item
-        </button>
+        <div className="work-toolbar-main">
+          <h2>Work items</h2>
+          <div className="work-total-count" aria-label="Task count summary">
+            <strong>
+              {taskCounts.open} of {taskCounts.total}
+            </strong>
+            <span>Total tasks</span>
+          </div>
+        </div>
+        <div className="work-state-summary" aria-label="Task state summary">
+          <span>To do {taskCounts.todo}</span>
+          <span>Doing {taskCounts.doing}</span>
+          <span>Resolved {taskCounts.resolved}</span>
+          <span>Done {taskCounts.done}</span>
+        </div>
+        <div className="work-toolbar-actions">
+          <select value={taskType} onChange={(e) => setTaskType(e.target.value)}>
+            <option value="story">Story</option>
+            <option value="bug">Bug</option>
+          </select>
+          <button type="button" onClick={() => setShowForm(true)}>
+            New Work Item
+          </button>
+        </div>
       </div>
       {tasks.length === 0 && (
         <div className="empty-work">Your work, all in one place</div>
